@@ -1,104 +1,84 @@
-# Netflix Content Clustering
+# Netflix / OTT Shows Clustering & Segmentation
 
-Unsupervised segmentation of the Netflix catalog. I grouped 8,807 movies and TV shows into 15 clusters using their descriptions, genres and release era, then profiled and named each cluster to see what hidden content patterns show up.
+Unsupervised learning on the Netflix catalog: group 8,807 movies and TV shows into content clusters using text features (descriptions, genres) plus release year and type, to discover hidden patterns in the catalog.
 
-![Clusters (t-SNE)](images/clusters_tsne.png)
+![K-Means clusters](figures/03_clusters_2d.png)
+
+## Highlights
+
+- **8,807 titles** clustered into **15 groups** without using genre labels as ground truth
+- **K-Means (silhouette 0.258) beat Agglomerative/Ward (0.228)**; the two methods agree moderately (adjusted Rand index 0.645)
+- Clear clusters emerge: stand-up comedy, horror, true-crime docuseries, kids' & anime TV, international TV dramas, romantic movies and more
 
 ## Approach
 
-1. **Text feature:** description + genres (repeated twice to up-weight them) + type + a release-era token. Multi-word genres are underscore-joined so each stays a single token.
-2. **TF-IDF:** unigrams and bigrams, 8,000 features, sublinear term frequency.
-3. **Dimensionality reduction:** TruncatedSVD (PCA for sparse data) to 100 components, then L2 normalisation.
-4. **Choosing k:** silhouette score for k = 4 to 40 (see Limitations).
-5. **Clustering:** K-Means and Agglomerative (Ward), compared with silhouette and Adjusted Rand Index.
-6. **Profiling:** size, % TV shows, median release year, top genres, top TF-IDF terms and sample titles per cluster, then manual naming.
+1. **Clean:** drop duplicates, fill missing text fields, fix rating values that are actually durations.
+2. **Features:** TF-IDF on descriptions (unigrams + bigrams) and on genres (each `listed_in` entry as one token), one-hot `type` and `rating`, min-max scaled `release_year`. Block weights are configurable.
+3. **Reduce:** TruncatedSVD (LSA) to 100 dimensions (56% variance retained), the sparse-friendly counterpart of PCA, then L2-normalise. PCA is used only for the 2D plots.
+4. **Cluster:** K-Means and Agglomerative (Ward), with k chosen from elbow and silhouette curves.
+5. **Compare:** silhouette, Davies-Bouldin, Calinski-Harabasz, and adjusted Rand index between methods.
+6. **Interpret:** top terms, genre mix, TV/movie split, median release year and example titles per cluster; 2D projection; nearest-neighbour "similar titles" lookup.
 
-## Results
+## Dataset
 
-k = 15. Both methods give similar scores and mostly agree on the structure:
+[Netflix Movies and TV Shows](https://www.kaggle.com/datasets/shivamb/netflix-shows) (Flixable, via Kaggle), about 8.8k titles. Download `netflix_titles.csv` and place it at `data/netflix_titles.csv`, or set `NETFLIX_CSV=/path/to/file.csv`.
 
-| Metric | Value |
-|---|---|
-| K-Means silhouette | 0.197 |
-| Agglomerative silhouette | 0.209 |
-| Adjusted Rand Index (K-Means vs Agglomerative) | 0.60 |
-
-K-Means clusters (names assigned manually from the profile table):
-
-| # | Cluster | Titles | % TV | Median year | Top genres | Examples |
-|---|---|---|---|---|---|---|
-| 0 | International drama films | 362 | 0 | 2016 | Dramas, International Movies | Caregiver, Bombay Talkies |
-| 1 | Recent international TV series (2019+) | 1,095 | 100 | 2020 | International TV Shows, TV Dramas, TV Comedies | Historical Roasts, Paranormal |
-| 2 | Stand-up and music specials | 343 | 0 | 2017 | Stand-Up Comedy, Music & Musicals, Documentaries | Ali Wong: Baby Cobra |
-| 3 | Mainstream movies (catch-all) | 2,799 | 0 | 2017 | International Movies, Dramas, Comedies | Splatter, The Red Sea Diving Resort |
-| 4 | Sci-fi and fantasy | 289 | 28 | 2015 | Sci-Fi & Fantasy, Action & Adventure | Next Gen |
-| 5 | International action films | 101 | 0 | 2016 | Action & Adventure, International Movies | Sky on Fire |
-| 6 | Feature documentaries | 359 | 0 | 2017 | Documentaries | Jeremiah Tower: The Last Magnificent |
-| 7 | Kids' TV series | 223 | 100 | 2017 | Kids' TV, TV Dramas, British TV Shows | Shopkins, Miniforce: Super Dino Power |
-| 8 | Kids' animated and family movies | 229 | 0 | 2017 | Children & Family Movies, Anime Features | Xico's Journey |
-| 9 | Musicals and music-driven films | 348 | 0 | 2016 | Music & Musicals, International Movies | Barbie Princess Adventure, Race 2 |
-| 10 | Family comedies | 204 | 0 | 2016 | Children & Family Movies, Comedies | Bedtime Stories, Zoom |
-| 11 | International romantic dramas | 180 | 0 | 2017 | Dramas, International Movies, Romantic Movies | Zindagi Kitni Haseen Hay, A Beautiful Life |
-| 12 | International TV series (late 2010s) | 1,276 | 100 | 2016 | International TV Shows, TV Dramas, TV Comedies | 100 Days My Prince |
-| 13 | International comedy-dramas | 274 | 0 | 2016 | Comedies, Dramas, International Movies | Cycle, Kuch Kuch Hota Hai |
-| 14 | Older international action dramas | 725 | 0 | 2012 | Action & Adventure, International Movies, Dramas | Asoka, Singham |
-
-### Findings
-
-- **Type dominates.** All clusters except sci-fi and fantasy are 0% or 100% TV, so movies and TV shows almost never mix.
-- **Era splits similar content.** Clusters 1 and 12 have nearly the same genre mix. What separates them is the release era (2019+ vs late 2010s).
-- **Niche formats form clean clusters.** Stand-up specials, documentaries and kids' TV each get their own tight group.
-- **A large catch-all exists.** Cluster 3 holds about a third of the catalog, mainstream late-2010s movies that don't separate by genre.
-
-### Plots
-
-| | |
-|---|---|
-| ![PCA](images/clusters_kmeans.png) | ![Silhouette vs k](images/silhouette_vs_k.png) |
-| K-Means clusters, PCA 2D | Silhouette vs k |
-
-![Cluster sizes](images/cluster_sizes.png)
-
-## Limitations
-
-- **k was chosen by interpretability, not by silhouette.** The silhouette score rose steadily from 0.07 at k=4 to 0.36 at k=40 with no peak or elbow, so it couldn't pick k. I settled on k=15 because that is where clusters stayed distinct and nameable.
-- **The structure is driven mostly by metadata.** Genres are up-weighted and type and era are included as tokens, so clusters follow those fields more than the meaning of the descriptions. The t-SNE plot shows the larger clusters broken into many small islands, which likely reflect shared genre combinations.
-- **One cluster is a catch-all.** Cluster 3 (2,799 titles) is too broad to be a sharp insight.
-- **Names are subjective.** I assigned them by hand from top genres, top terms and sample titles.
-- **t-SNE distances are not meaningful.** The plot shows which titles group together, not how far apart clusters are.
-- **No stability analysis.** Results use one fixed random seed.
-
-## Run it
+## Run
 
 ```bash
 pip install -r requirements.txt
+python netflix_clustering.py
+# options: --data PATH --k 15 --components 100 --similar "Some Title"
 ```
 
-1. Download `netflix_titles.csv` (see `data/README.md`) into `data/`.
-2. Open `notebooks/clustering.ipynb` and run the cells top to bottom.
-3. Plots are saved to `images/` and tables to `outputs/`.
+Outputs: figures in `figures/`; `netflix_clustered.csv`, `cluster_profiles.csv` and `model_metrics.csv` in `data/`.
 
-## Project structure
+## Results
 
-```
-netflix-content-clustering/
-├── data/           # dataset instructions (raw CSV not committed)
-├── notebooks/      # clustering.ipynb, the full analysis
-├── src/            # preprocessing, features, clustering and profiling code
-├── images/         # plots used in this README
-└── outputs/        # cluster_profile.csv, netflix_clustered.csv
-```
+### Model comparison (k = 15)
+
+| Method | Silhouette | Davies-Bouldin (lower is better) | Calinski-Harabasz |
+|---|---|---|---|
+| **K-Means** | **0.258** | **1.688** | **741.5** |
+| Agglomerative (Ward) | 0.228 | 1.910 | 677.3 |
+
+Adjusted Rand index between the two: 0.645.
+
+### Clusters (K-Means)
+
+| Cluster | Size | Top genres | Example titles |
+|---|---|---|---|
+| Stand-up comedy specials | 342 | Stand-Up Comedy, Music & Musicals | Jeff Dunham: Arguing with Myself |
+| Horror movies | 357 | Horror, Thrillers | Crimson Peak, Silent Hill: Revelation |
+| Docuseries & true crime | 395 | Docuseries, Crime TV, Reality TV | The Irish Mob |
+| Documentaries | 724 | Documentaries, Sports Movies | Iverson |
+| Music & musical documentaries | 358 | Music & Musicals, Documentaries | I Called Him Morgan |
+| Kids' & anime TV | 450 | Kids' TV, TV Comedies, Anime | LEGO Ninjago, Yo-Kai Watch |
+| Family & kids' movies | 587 | Children & Family, Comedies | Open Season |
+| International TV dramas & crime | 747 | TV Dramas, Crime TV | The Rain |
+| International TV comedy, romance & reality | 1,084 | TV Comedies, Romantic TV | Get Even |
+| Romantic movies | 561 | Romantic, International | Single |
+| Thrillers | 446 | Thrillers, Dramas | Interrogation |
+| International comedies | 667 | Comedies, International | Your Excellency |
+| Action & cult movies | 770 | Action & Adventure, Cult | The Matrix, V for Vendetta |
+| Indie dramas | 604 | Independent, Dramas | Almost Love |
+| Dramas, sports & faith movies | 715 | Dramas, International | A Way Back Home |
+
+### Figures
+
+| | |
+|---|---|
+| ![Choosing k](figures/02_choose_k.png) | ![Genre mix](figures/04_genre_heatmap.png) |
+
+## Limitations
+
+- Silhouette was still rising at k = 15, the top of the tested range, so k = 15 was chosen for interpretability rather than as a true optimum.
+- Genre features dominate the description text in the cluster terms. Broad "international drama/comedy" movies stay blurry because their genres and descriptions overlap heavily.
+- Silhouette scores around 0.2 are typical for sparse text data; clusters are best read as soft themes, not hard categories.
 
 ## Next steps
 
-- Replace TF-IDF with sentence-transformer embeddings and compare the clusters.
-- Lower the genre weighting, or drop the type and era tokens, so clusters follow description themes more.
-- Add a "find similar shows" function using cosine similarity.
-
-## Tech
-
-Python, pandas, NumPy, scikit-learn, matplotlib, Jupyter
-
-## Data
-
-Netflix Movies and TV Shows (Flixable) on Kaggle: https://www.kaggle.com/datasets/shivamb/netflix-shows
+- Sentence-transformer embeddings instead of TF-IDF
+- HDBSCAN for density-based clusters
+- Tune the genre/description weights and extend the k range
+- Add `country`, `cast` and `director` features
